@@ -2,7 +2,7 @@
   "name": "cento-mobile",
   "version": "1.0.0",
   "description": "Cento & Co. — Banca Patrimonial y Rendimiento Líquido en React Native con Expo",
-  "main": "index.ts",
+  "main": "index.js",
   "scripts": {
     "start": "expo start",
     "android": "expo run:android",

@@ -101,11 +101,18 @@ jobs:
       - name: Package Payload & Create IPA
         run: |
           mkdir -p build_output/Payload
-          cp -r cento-expo/ios/build/Cento.xcarchive/Products/Applications/Cento.app build_output/Payload/
-          cd build_output
-          zip -qr Cento.ipa Payload
-          zip -qr Cento-App.zip Payload/Cento.app
-          cd ..
+          APP_PATH=$(find cento-expo/ios/build ~/Library/Developer/Xcode/DerivedData -name "Cento.app" -type d 2>/dev/null | head -n 1)
+          if [ -n "$APP_PATH" ] && [ -d "$APP_PATH" ]; then
+            echo "Found app at: $APP_PATH"
+            cp -R "$APP_PATH" build_output/Payload/
+            cd build_output
+            zip -qr Cento.ipa Payload
+            zip -qr Cento-App.zip Payload/Cento.app
+            cd ..
+          else
+            echo "Error: Could not locate Cento.app" >&2
+            exit 1
+          fi
 
       - name: Upload iOS Release Artifacts
         uses: actions/upload-artifact@v4
