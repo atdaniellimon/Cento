@@ -1,4 +1,4 @@
-name: Compilar IPA iOS (Cento & Co.)
+name: Build Cento & Co. (iOS IPA & Core Backend)
 
 on:
   push:
@@ -6,81 +6,85 @@ on:
   pull_request:
     branches: [ main, master ]
   workflow_dispatch:
-    inputs:
-      build_type:
-        description: 'Tipo de compilación'
-        required: true
-        default: 'release_ipa'
-        type: choice
-        options:
-          - 'release_ipa'
-          - 'simulator_build'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build-backend:
-    name: Validar y Compilar Backend Go
+    name: Build & Verify Go Core
     runs-on: ubuntu-latest
     steps:
-      - name: Clonar repositorio
+      - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Configurar Go
+      - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version: '1.22'
           cache-dependency-path: cento-backend-go/go.sum
 
-      - name: Compilar binario de Cento Core
+      - name: Build Core Server
         run: |
           cd cento-backend-go
           go vet ./...
           go build -v -o cento-server ./cmd/server
 
   build-ios:
-    name: Compilar IPA iOS (.ipa)
+    name: Build iOS IPA (Xcode Latest)
     needs: build-backend
     runs-on: macos-14
     steps:
-      - name: Clonar repositorio
+      - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Configurar Node.js
+      - name: Select Latest Xcode Version
+        run: |
+          echo "Available Xcode versions:"
+          ls -d /Applications/Xcode* || true
+          LATEST_XCODE=$(find /Applications -maxdepth 1 -name "Xcode*.app" | sort -V | tail -n 1)
+          echo "Selected: $LATEST_XCODE"
+          sudo xcode-select -s "$LATEST_XCODE/Contents/Developer"
+          xcodebuild -version
+
+      - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: 'npm'
           cache-dependency-path: cento-expo/package-lock.json
 
-      - name: Configurar Ruby y CocoaPods
+      - name: Set up Ruby & CocoaPods
         uses: ruby/setup-ruby@v1
         with:
           ruby-version: '3.2'
           bundler-cache: false
 
-      - name: Instalar CocoaPods
+      - name: Install CocoaPods
         run: sudo gem install cocoapods
 
-      - name: Instalar dependencias de React Native (Expo)
+      - name: Install Dependencies
         run: |
           cd cento-expo
           npm ci
 
-      - name: Validar tipos con TypeScript
+      - name: TypeScript Typecheck
         run: |
           cd cento-expo
           npx tsc --noEmit
 
-      - name: Generar proyecto nativo de iOS (Expo Prebuild)
+      - name: Prebuild Native iOS Scaffolding
         run: |
           cd cento-expo
           npx expo prebuild --platform ios --clean
 
-      - name: Instalar Pods nativos de iOS
+      - name: Install Pods
         run: |
           cd cento-expo/ios
           pod install --repo-update
 
-      - name: Compilar Archivo de Release con Xcode
+      - name: Build iOS App with Xcode
         run: |
           cd cento-expo/ios
           xcodebuild clean archive \
@@ -92,19 +96,22 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
-            PROVISIONING_PROFILE_SPECIFIER=""
+            AD_HOC_CODE_SIGNING_ALLOWED=YES
 
-      - name: Empaquetar Payload en archivo .ipa
+      - name: Package Payload & Create IPA
         run: |
-          cd cento-expo/ios
-          mkdir -p Payload
-          cp -r build/Cento.xcarchive/Products/Applications/Cento.app Payload/
+          mkdir -p build_output/Payload
+          cp -r cento-expo/ios/build/Cento.xcarchive/Products/Applications/Cento.app build_output/Payload/
+          cd build_output
           zip -qr Cento.ipa Payload
-          mv Cento.ipa ../../
+          zip -qr Cento-App.zip Payload/Cento.app
+          cd ..
 
-      - name: Subir artefacto Cento.ipa para descarga directa
+      - name: Upload iOS Release Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Cento-iOS-IPA
-          path: Cento.ipa
+          name: Cento-iOS-Release
+          path: |
+            build_output/*.ipa
+            build_output/*.zip
           retention-days: 14
