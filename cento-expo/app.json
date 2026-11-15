@@ -1,0 +1,34 @@
+{
+  "expo": {
+    "name": "Cento",
+    "slug": "cento-banking",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "backgroundColor": "#FAF9F5"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.cento.privatebank",
+      "infoPlist": {
+        "NSFaceIDUsageDescription": "Cento requiere Face ID para autorizar y firmar digitalmente órdenes de transferencia SPEI con tu clave privada."
+      }
+    },
+    "android": {
+      "package": "com.cento.privatebank",
+      "adaptiveIcon": {
+        "backgroundColor": "#FAF9F5"
+      }
+    },
+    "plugins": [
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Cento requiere Face ID para autorizar y firmar órdenes SPEI."
+        }
+      ]
+    ]
+  }
+}

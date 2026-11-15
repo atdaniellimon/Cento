@@ -1,0 +1,110 @@
+name: Compilar IPA iOS (Cento & Co.)
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: 'Tipo de compilación'
+        required: true
+        default: 'release_ipa'
+        type: choice
+        options:
+          - 'release_ipa'
+          - 'simulator_build'
+
+jobs:
+  build-backend:
+    name: Validar y Compilar Backend Go
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clonar repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache-dependency-path: cento-backend-go/go.sum
+
+      - name: Compilar binario de Cento Core
+        run: |
+          cd cento-backend-go
+          go vet ./...
+          go build -v -o cento-server ./cmd/server
+
+  build-ios:
+    name: Compilar IPA iOS (.ipa)
+    needs: build-backend
+    runs-on: macos-14
+    steps:
+      - name: Clonar repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: cento-expo/package-lock.json
+
+      - name: Configurar Ruby y CocoaPods
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.2'
+          bundler-cache: false
+
+      - name: Instalar CocoaPods
+        run: sudo gem install cocoapods
+
+      - name: Instalar dependencias de React Native (Expo)
+        run: |
+          cd cento-expo
+          npm ci
+
+      - name: Validar tipos con TypeScript
+        run: |
+          cd cento-expo
+          npx tsc --noEmit
+
+      - name: Generar proyecto nativo de iOS (Expo Prebuild)
+        run: |
+          cd cento-expo
+          npx expo prebuild --platform ios --clean
+
+      - name: Instalar Pods nativos de iOS
+        run: |
+          cd cento-expo/ios
+          pod install --repo-update
+
+      - name: Compilar Archivo de Release con Xcode
+        run: |
+          cd cento-expo/ios
+          xcodebuild clean archive \
+            -workspace Cento.xcworkspace \
+            -scheme Cento \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath build/Cento.xcarchive \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            PROVISIONING_PROFILE_SPECIFIER=""
+
+      - name: Empaquetar Payload en archivo .ipa
+        run: |
+          cd cento-expo/ios
+          mkdir -p Payload
+          cp -r build/Cento.xcarchive/Products/Applications/Cento.app Payload/
+          zip -qr Cento.ipa Payload
+          mv Cento.ipa ../../
+
+      - name: Subir artefacto Cento.ipa para descarga directa
+        uses: actions/upload-artifact@v4
+        with:
+          name: Cento-iOS-IPA
+          path: Cento.ipa
+          retention-days: 14
